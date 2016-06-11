@@ -12,6 +12,7 @@ models.use(Git);
 
 router.get("/", _getIndex);
 router.get("/wiki", _getWiki);
+router.get("/wiki/category/:category", _getCategory);
 router.options("/wiki/:page", corsEnabler);
 router.get("/wiki/:page", corsEnabler, _getWikiPage);
 router.get("/wiki/:page/history", _getHistory);
@@ -43,9 +44,41 @@ function _getHistory(req, res) {
   });
 }
 
-function _getWiki(req, res) {
+function _filterPages(re, page, cb) {
+  if (typeof page === "function")
+  {
+    cb = page;
+    page = 0;
+  }
 
   var items = [];
+  var pagen = 0||page;
+
+  var pages = new models.Pages();
+
+  pages.fetch(pagen, page < 0, re).then(function () {
+
+    pages.models.forEach(function (page) {
+
+      if (!page.error) {
+        items.push({
+          page: page,
+          hashes: page.hashes.length == 2 ? page.hashes.join("..") : ""
+        });
+      }
+    });
+
+    cb(null, {items: items, totalPages: pages.totalPages, currentPage: pages.currentPage});
+
+  }).catch(function (ex) {
+    console.log(ex);
+    cb(ex);
+  });
+}
+
+function _getWiki(req, res) {
+
+  /*var items = [];
   var pagen = 0|req.query.page;
 
   var pages = new models.Pages();
@@ -72,6 +105,38 @@ function _getWiki(req, res) {
     });
   }).catch(function (ex) {
     console.log(ex);
+  }); */
+
+  _filterPages(/^.*/i, req.query.page || 0, function (err, ret){
+    res.render("list", {
+      items: ret.items,
+      title: "All the pages",
+      pageNumbers: Array.apply(null, Array(ret.totalPages)).map(function (x, i) {
+        return i + 1;
+      }),
+      pageCurrent: ret.currentPage
+    });
+  });
+}
+
+function _getCategory(req, res) {
+  var re = new RegExp("^"+req.params.category+":", "i");
+  _filterPages(re, -1, function (err, ret){
+    console.log(ret.items);
+    ret.items.sort(function (a, b){
+      return (a.page.name.toLowerCase() < b.page.name.toLowerCase()) ? -1 : 1;
+    });
+
+    res.render("list", {
+      items: ret.items,
+      title: "Category: " +req.params.category,
+      /*pageNumbers: Array.apply(null, Array(pages.totalPages)).map(function (x, i) {
+        return i + 1;
+      }),
+      pageCurrent: pages.currentPage*/
+      pageNumbers: [1],
+      pageCurrent: 1
+    });
   });
 }
 
